@@ -276,7 +276,7 @@ function TitleScreen({ onStart, stats, onInteract }: { onStart: (diff: Difficult
               style={{ textShadow: "0 0 24px rgba(245,158,11,0.4), 3px 3px 0 #7c2d12" }}
             >
               コーギーの<br />
-              <span className="text-amber-400 text-3xl">つまみ食いゲーム</span>
+              <span className="text-amber-400 text-4xl">つまみぐい大作戦</span>
             </h1>
           </div>
 

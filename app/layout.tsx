@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "コーギーつまみ食いゲーム",
+  title: "コーギーのつまみぐい大作戦",
   description: "飼い主に見つからないように、左右のおやつをすべてゲットしよう！",
 };
 
