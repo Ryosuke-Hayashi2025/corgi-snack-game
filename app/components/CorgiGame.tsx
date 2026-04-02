@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { logPlay, fetchStats } from "../lib/supabase";
 
 // ===== 音声ファイル設定（差し替えはここだけ変更すればOK） =====
 const SOUNDS = {
@@ -29,6 +30,8 @@ const DIFFICULTY_CONFIG = {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+type Stats = { total: number; normalTotal: number; normalClear: number; hardTotal: number; hardClear: number };
+
 // ===== メインコンポーネント =====
 export default function CorgiGame() {
   const [screen,        setScreen]        = useState<Screen>("title");
@@ -42,10 +45,16 @@ export default function CorgiGame() {
   const [hasInteracted, setHasInteracted] = useState(false);
   const [timeLeft,      setTimeLeft]      = useState(30);
   const [difficulty,    setDifficulty]    = useState<Difficulty>("normal");
+  const [stats, setStats] = useState({ total: 0, normalTotal: 0, normalClear: 0, hardTotal: 0, hardClear: 0 });
 
   const bgmRef          = useRef<HTMLAudioElement | null>(null);
   const animIdRef       = useRef(0);
   const ownerWatchingRef = useRef(ownerWatching);
+
+  // ----- 統計取得（マウント時） -----
+  useEffect(() => {
+    fetchStats().then(setStats);
+  }, []);
 
   // ----- BGM管理 -----
   const playBgm = useCallback((src: string) => {
@@ -81,6 +90,18 @@ export default function CorgiGame() {
 
   useEffect(() => () => { bgmRef.current?.pause(); }, []);
 
+  // 全画面で矢印キーのスクロールを防止
+  useEffect(() => {
+    const block = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight" ||
+          e.key === "ArrowUp"   || e.key === "ArrowDown") {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", block);
+    return () => window.removeEventListener("keydown", block);
+  }, []);
+
   // ownerWatching の最新値を ref に同期（アニメーション中のリアルタイム判定用）
   useEffect(() => { ownerWatchingRef.current = ownerWatching; }, [ownerWatching]);
 
@@ -111,6 +132,7 @@ export default function CorgiGame() {
         if (t <= 1) {
           clearInterval(tid);
           stopBgm();
+          logPlay(difficulty, "gameover").then(() => fetchStats().then(setStats));
           setResultType("gameover");
           setScreen("result");
           return 0;
@@ -119,7 +141,7 @@ export default function CorgiGame() {
       });
     }, 1000);
     return () => clearInterval(tid);
-  }, [screen, stopBgm]);
+  }, [screen, stopBgm, difficulty]);
 
   // ----- おやつを取るアクション -----
   const takeSnack = useCallback(
@@ -151,6 +173,7 @@ export default function CorgiGame() {
         if (newLeft <= 0 && newRight <= 0) {
           playSound(SOUNDS.clear);
           stopBgm();
+          logPlay(difficulty, "clear").then(() => fetchStats().then(setStats));
           setResultType("clear");
           setScreen("result");
           setCorgiAction("idle");
@@ -166,6 +189,7 @@ export default function CorgiGame() {
         if (animIdRef.current !== id) return;
         if (newMisses >= 3) {
           stopBgm();
+          logPlay(difficulty, "gameover").then(() => fetchStats().then(setStats));
           setResultType("gameover");
           setScreen("result");
           setCorgiAction("idle");
@@ -206,11 +230,12 @@ export default function CorgiGame() {
   };
 
   if (screen === "title")
-    return <TitleScreen onStart={startGame} />;
+    return <TitleScreen onStart={startGame} stats={stats} onInteract={() => setHasInteracted(true)} />;
   if (screen === "result")
     return (
       <ResultScreen
         type={resultType}
+        stats={stats}
         onRestart={() => startGame(difficulty)}
         onTitle={() => { setHasInteracted(true); setScreen("title"); }}
       />
@@ -231,11 +256,12 @@ export default function CorgiGame() {
 }
 
 // ===== タイトル画面 =====
-function TitleScreen({ onStart }: { onStart: (diff: Difficulty) => void }) {
+function TitleScreen({ onStart, stats, onInteract }: { onStart: (diff: Difficulty) => void; stats: Stats; onInteract: () => void }) {
   return (
     <div
       className="flex flex-col items-center justify-center min-h-screen p-4 font-mono"
       style={{ background: "#fdf6e3" }}
+      onClick={onInteract}
     >
       <div className="w-full max-w-sm border-2 border-amber-600">
         <div className="h-2 bg-amber-400" />
@@ -256,9 +282,7 @@ function TitleScreen({ onStart }: { onStart: (diff: Difficulty) => void }) {
 
           {/* コーギーをどーんと表示 */}
           <div className="flex justify-center py-2">
-            <div className="anim-corgi-bounce">
-              <CorgiBody action="idle" />
-            </div>
+            <CorgiBody action="idle" size={240} />
           </div>
 
 
@@ -273,7 +297,7 @@ function TitleScreen({ onStart }: { onStart: (diff: Difficulty) => void }) {
                 boxShadow: "0 5px 0 #92400e",
               }}
             >
-              ▶ 通常 START
+              ▶ 通常版 START
             </button>
             <button
               type="button"
@@ -291,7 +315,11 @@ function TitleScreen({ onStart }: { onStart: (diff: Difficulty) => void }) {
 
         <div className="h-1 bg-amber-700 mt-5" />
         <div className="h-2 bg-amber-400" />
-        <p className="text-center text-xs mt-2 text-amber-800">BGM：魔王魂　効果音：効果音ラボ</p>
+        <div className="text-center text-xs mt-2 space-y-0.5 text-amber-800">
+          <p>累計プレイ：{stats.total}回</p>
+          <p>通常版：{stats.normalTotal}回（クリア {stats.normalClear}回）　激ムズ：{stats.hardTotal}回（クリア {stats.hardClear}回）</p>
+          <p className="mt-1">BGM：魔王魂　効果音：効果音ラボ</p>
+        </div>
       </div>
     </div>
   );
@@ -538,13 +566,10 @@ function CorgiCharacter({ action }: { action: CorgiAction }) {
 
   return (
     <div style={{ transform: `translateX(${corgiX}px)`, transition: "transform 330ms ease-in-out" }}>
-      <div className={`flex flex-col items-center ${animClass}`}>
-        <CorgiBody action={action} facingLeft={dirRef.current === "left"} />
-        <div
-          className="text-xs font-bold text-amber-300 -mt-1"
-          style={{ height: 18, opacity: label ? 1 : 0, transition: "opacity 0.15s" }}
-        >
-          {label || "\u3000"}
+      <div className="flex flex-col items-center">
+        <CorgiBody action={action} facingLeft={dirRef.current === "left"} animClass={animClass} />
+        <div className="text-xs font-bold text-amber-300 -mt-1" style={{ height: 18 }}>
+          {label}
         </div>
       </div>
     </div>
@@ -565,26 +590,26 @@ const CORGI_IMG: Record<CorgiAction, string> = {
 function CorgiBody({
   action = "idle",
   facingLeft = false,
+  animClass = "",
+  size = 180,
 }: {
   action?: CorgiAction;
   facingLeft?: boolean;
+  animClass?: string;
+  size?: number;
 }) {
   return (
-    <div
-      className="select-none"
-      style={{
-        transform: facingLeft ? "scaleX(-1)" : "scaleX(1)",
-        transition: "transform 180ms ease",
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={CORGI_IMG[action]}
-        alt="corgi"
-        width={180}
-        height={180}
-        className="object-contain"
-      />
+    <div className={`select-none ${animClass}`}>
+      <div style={{ transform: facingLeft ? "scaleX(-1)" : "scaleX(1)", transition: "transform 180ms ease" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={CORGI_IMG[action]}
+          alt="corgi"
+          width={size}
+          height={size}
+          className="object-contain"
+        />
+      </div>
     </div>
   );
 }
@@ -621,9 +646,10 @@ function SnackRow({ count, side }: { count: number; side: "left" | "right" }) {
 
 // ===== リザルト画面 =====
 function ResultScreen({
-  type, onRestart, onTitle,
+  type, stats, onRestart, onTitle,
 }: {
   type: ResultType;
+  stats: Stats;
   onRestart: () => void;
   onTitle: () => void;
 }) {
@@ -660,6 +686,11 @@ function ResultScreen({
           <div className="anim-corgi-bounce">
             <CorgiBody action="idle" />
           </div>
+        </div>
+
+        <div className="text-xs space-y-0.5 text-black">
+          <p>累計プレイ：{stats.total}回</p>
+          <p>通常版：{stats.normalTotal}回（クリア {stats.normalClear}回）　激ムズ：{stats.hardTotal}回（クリア {stats.hardClear}回）</p>
         </div>
 
         <div className="space-y-3 pt-1">
