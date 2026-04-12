@@ -9,12 +9,12 @@ export type Difficulty = "normal" | "hard";
 export type Result     = "clear" | "gameover";
 
 export async function logPlay(difficulty: Difficulty, result: Result) {
-  await supabase.from("play_logs").insert({ difficulty, result });
+  await supabase.from("corgi_snack_game_play_logs").insert({ difficulty, result });
 }
 
 export async function fetchStats() {
   const { data } = await supabase
-    .from("play_logs")
+    .from("corgi_snack_game_play_logs")
     .select("difficulty, result");
   if (!data) return { total: 0, normalTotal: 0, normalClear: 0, hardTotal: 0, hardClear: 0 };
   return {
